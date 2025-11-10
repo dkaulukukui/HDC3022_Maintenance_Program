@@ -67,6 +67,7 @@ SensorInfo sensor;
 // Display update timing
 unsigned long lastDisplayUpdate = 0;
 #define DISPLAY_UPDATE_INTERVAL 500
+#define CONFIRMATION_DISPLAY_TIME 2000  // Time to show confirmation screen (ms)
 
 // Function prototypes
 void initializeSensor();
@@ -360,20 +361,20 @@ void displaySensorInfo() {
           (uint8_t)((sensor.nist_id >> 8) & 0xFF),
           (uint8_t)(sensor.nist_id & 0xFF));
   
-  // Display on one or two lines based on length
-  if (strlen(nistStr) > 10) {
-    // Display first 6 digits on first line
-    char line1[7];
-    strncpy(line1, nistStr, 6);
-    line1[6] = '\0';
-    display.println(line1);
+  // // Display on one or two lines based on length
+  // if (strlen(nistStr) > 10) {
+  //   // Display first 6 digits on first line
+  //   char line1[7];
+  //   strncpy(line1, nistStr, 6);
+  //   line1[6] = '\0';
+  //   display.println(line1);
     
-    // Display remaining 6 digits on second line with indent
-    display.print("  ");
-    display.println(&nistStr[6]);
-  } else {
+  //   // Display remaining 6 digits on second line with indent
+  //   display.print("  ");
+  //   display.println(&nistStr[6]);
+  // } else {
     display.println(nistStr);
-  }
+  // }
   
   // Current readings
   display.print("Temp: ");
@@ -511,16 +512,19 @@ void handleButtons() {
             
           case 1: // Condensation Removal
             displayConfirmation("CONDENSATION\nREMOVAL");
+            delay(CONFIRMATION_DISPLAY_TIME);
             currentMenu = MENU_CONDENSATION;
             break;
             
           case 2: // Offset Correction
             displayConfirmation("OFFSET ERROR\nCORRECTION");
+            delay(CONFIRMATION_DISPLAY_TIME);
             currentMenu = MENU_OFFSET_CORRECTION;
             break;
             
           case 3: // Reset Offsets
             displayConfirmation("RESET OFFSETS\nTO ZERO");
+            delay(CONFIRMATION_DISPLAY_TIME);
             currentMenu = MENU_RESET_OFFSETS;
             break;
         }
