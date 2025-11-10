@@ -156,10 +156,15 @@ void setup() {
   display.println(sensor.i2c_address, HEX);
   display.println();
   display.print("NIST ID:");
-  char nistStr[17];
-  sprintf(nistStr, "%08lX%08lX", 
-          (unsigned long)(sensor.nist_id >> 32), 
-          (unsigned long)(sensor.nist_id & 0xFFFFFFFF));
+  // Format as 6-byte (48-bit) hex value: XX:XX:XX:XX:XX:XX
+  char nistStr[18];
+  sprintf(nistStr, "%02X%02X%02X%02X%02X%02X",
+          (uint8_t)((sensor.nist_id >> 40) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 32) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 24) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 16) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 8) & 0xFF),
+          (uint8_t)(sensor.nist_id & 0xFF));
   display.println(nistStr);
   display.println();
   display.println("Ready!");
@@ -241,52 +246,25 @@ void readSensorData() {
 void readNISTID() {
   sensor.nist_id = 0;
   
-  uint8_t addr = sensor.i2c_address;
-  
-  // Try to read manufacturer ID from registers 0xFC-0xFD
-  uint16_t mfg_id = 0;
-  Wire.beginTransmission(addr);
-  Wire.write(0xFC);
-  if (Wire.endTransmission(false) == 0) {
-    if (Wire.requestFrom(addr, (uint8_t)2) == 2) {
-      mfg_id = Wire.read() << 8;
-      mfg_id |= Wire.read();
+  // Read NIST ID directly from the sensor using the library function
+  uint8_t nist_bytes[6];
+  if (hdc.readNISTID(nist_bytes)) {
+    // Convert 6-byte array to uint64_t
+    sensor.nist_id = 0;
+    for (int i = 0; i < 6; i++) {
+      sensor.nist_id |= ((uint64_t)nist_bytes[i]) << ((5 - i) * 8);
     }
-  }
-  
-  // Try to read device ID from registers 0xFE-0xFF  
-  uint16_t dev_id = 0;
-  Wire.beginTransmission(addr);
-  Wire.write(0xFE);
-  if (Wire.endTransmission(false) == 0) {
-    if (Wire.requestFrom(addr, (uint8_t)2) == 2) {
-      dev_id = Wire.read() << 8;
-      dev_id |= Wire.read();
+    
+    Serial.print("Successfully read NIST ID from sensor: 0x");
+    // Display as 6-byte (48-bit) hex value
+    for (int i = 0; i < 6; i++) {
+      if (nist_bytes[i] < 0x10) Serial.print("0");
+      Serial.print(nist_bytes[i], HEX);
     }
-  }
-  
-  // Try to read serial number from register 0xFB (40-bit)
-  uint64_t serial_num = 0;
-  Wire.beginTransmission(addr);
-  Wire.write(0xFB);
-  if (Wire.endTransmission(false) == 0) {
-    if (Wire.requestFrom(addr, (uint8_t)5) == 5) {
-      for (int i = 4; i >= 0; i--) {
-        serial_num |= ((uint64_t)Wire.read()) << (i * 8);
-      }
-    }
-  }
-  
-  // Use best available ID
-  if (serial_num != 0) {
-    sensor.nist_id = serial_num;
-    Serial.println("Using hardware serial number");
-  } else if (mfg_id != 0 && dev_id != 0) {
-    sensor.nist_id = ((uint64_t)mfg_id << 48) | ((uint64_t)dev_id << 32) | 0x0001;
-    Serial.println("Using MFG+DEV ID");
+    Serial.println();
   } else {
-    sensor.nist_id = 0xDC30220000000001ULL;
-    Serial.println("Using placeholder ID");
+    Serial.println("ERROR: Failed to read NIST ID from sensor");
+    sensor.nist_id = 0;
   }
 }
 
@@ -371,13 +349,31 @@ void displaySensorInfo() {
   display.println("SENSOR INFO");
   display.println("------------");
   
-  // NIST ID
+  // NIST ID - display as 6-byte (48-bit) hex value
   display.print("ID:");
-  char nistStr[13];
-  sprintf(nistStr, "%08lX%04lX", 
-          (unsigned long)(sensor.nist_id >> 32), 
-          (unsigned long)((sensor.nist_id >> 16) & 0xFFFF));
-  display.println(nistStr);
+  char nistStr[13];  // 12 hex digits + null terminator
+  sprintf(nistStr, "%02X%02X%02X%02X%02X%02X",
+          (uint8_t)((sensor.nist_id >> 40) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 32) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 24) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 16) & 0xFF),
+          (uint8_t)((sensor.nist_id >> 8) & 0xFF),
+          (uint8_t)(sensor.nist_id & 0xFF));
+  
+  // Display on one or two lines based on length
+  if (strlen(nistStr) > 10) {
+    // Display first 6 digits on first line
+    char line1[7];
+    strncpy(line1, nistStr, 6);
+    line1[6] = '\0';
+    display.println(line1);
+    
+    // Display remaining 6 digits on second line with indent
+    display.print("  ");
+    display.println(&nistStr[6]);
+  } else {
+    display.println(nistStr);
+  }
   
   // Current readings
   display.print("Temp: ");
@@ -584,6 +580,10 @@ void handleButtons() {
         currentMenu = MENU_MAIN;
         lastButtonPress = millis();
       }
+      break;
+      
+    case MENU_RUNNING_OPERATION:
+      // No button handling during operation - operation functions manage their own flow
       break;
   }
 }
